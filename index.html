@@ -1,0 +1,297 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>CLA Comment Builder</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+/* Layout: two-column workbench (form left, three comment boxes right), stacks on phones */
+:root{
+  --bg:#1e1e1e; --panel:#252526; --fg:#d4d4d4; --muted:#8a8a8a; --line:#3c3c3c;
+  --accent:#d4d4d4; --accent-fg:#1e1e1e; --soft:#2d2d2d; --warn:#d7ba7d;
+  --sans:Arial,Helvetica,sans-serif;
+  --mono:Arial,Helvetica,sans-serif;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font-family:var(--sans);font-size:14px;line-height:1.45;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:20px}
+.wrap{max-width:1180px;margin:0 auto;display:grid;gap:16px}
+header h1{margin:0;font-size:20px;font-weight:600;letter-spacing:-.01em}
+header p{margin:4px 0 0;color:var(--muted)}
+.grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.1fr);gap:16px;align-items:start}
+@media (max-width:860px){.grid{grid-template-columns:1fr}}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:2px;padding:16px;display:grid;gap:12px;min-width:0}
+.panel h2{margin:0;font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:600}
+.row{display:grid;gap:10px;grid-template-columns:repeat(2,minmax(0,1fr))}
+@media (max-width:480px){.row{grid-template-columns:1fr}}
+label{display:grid;gap:4px;font-size:12px;color:var(--muted);font-weight:500}
+input,select,textarea{font:inherit;color:var(--fg);background:var(--bg);border:1px solid var(--line);border-radius:2px;padding:6px 8px;width:100%}
+input:focus,select:focus,textarea:focus,button:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.tabs{display:flex;gap:6px;flex-wrap:wrap}
+.tab{border:1px solid var(--line);background:var(--bg);color:var(--fg);padding:5px 12px;border-radius:2px;cursor:pointer;font:inherit;font-weight:500}
+.tab[aria-pressed="true"]{background:var(--accent);color:var(--accent-fg);border-color:var(--accent)}
+.preview{font-family:var(--mono);font-size:13px;background:var(--soft);border:1px solid var(--line);border-radius:2px;padding:10px;min-height:40px;white-space:pre-wrap;word-break:break-word}
+.btns{display:flex;gap:8px;flex-wrap:wrap}
+button.main{background:var(--accent);color:var(--accent-fg);border:0;border-radius:2px;padding:8px 14px;font:inherit;font-weight:600;cursor:pointer}
+button.ghost{background:transparent;color:var(--fg);border:1px solid var(--line);border-radius:2px;padding:7px 12px;font:inherit;cursor:pointer}
+.box{display:grid;gap:6px}
+.box-head{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
+.box-head strong{font-size:14px}
+textarea.out{font-family:var(--mono);font-size:13px;min-height:92px;resize:vertical}
+.hint{font-size:12px;color:var(--muted)}
+.calc{display:flex;gap:8px;align-items:end;flex-wrap:wrap}
+.calc label{width:110px}
+.score{font-family:var(--mono);font-weight:600;padding:6px 10px;border:1px solid var(--line);background:var(--soft)}
+.toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--soft);color:var(--fg);border:1px solid var(--line);padding:6px 12px;font-weight:500}
+@media (prefers-reduced-motion:no-preference){.tab,button{transition:background .15s}}
+</style>
+
+<div class="wrap">
+  <section class="panel" id="viewL" hidden aria-label="Identificar idioma" style="display:none">
+    <h2>Pega el texto (Original Text o Translation)</h2>
+    <textarea id="langIn" rows="4" spellcheck="false" placeholder="Ej. وی کیا ہے / ㅂㅂ / Александра"></textarea>
+    <div class="preview" id="langOut" aria-live="polite">Esperando texto...</div>
+    <div class="btns"><button class="ghost" id="langClear">Limpiar</button></div>
+    <p class="hint">Detecta por alfabeto y palabras comunes. En textos muy cortos o en latín (ej. "ya", "ah é") el resultado es aproximado.</p>
+  </section>
+  <div id="viewC">
+
+  <div class="grid">
+    <section class="panel" aria-label="Constructor">
+      <h2>1. Dimensión</h2>
+      <div class="tabs" id="dims">
+        <button class="tab" data-dim="A" aria-pressed="true">Accuracy</button>
+        <button class="tab" data-dim="F" aria-pressed="false">Fluency</button>
+        <button class="tab" data-dim="N" aria-pressed="false">Naturalness</button>
+        <button class="tab" data-dim="X" aria-pressed="false">Etiquetas</button>
+      </div>
+
+      <h2>2. Error</h2>
+      <label>Tipo de error
+        <select id="type"></select>
+      </label>
+
+      <h2>3. Campos</h2>
+      <div id="fields" class="row"></div>
+
+      <div class="preview" id="preview" aria-live="polite"></div>
+      <div class="btns">
+        <button class="main" id="add">Agregar al comentario</button>
+        <button class="ghost" id="copyLine">Copiar solo esta línea</button>
+        <button class="ghost" id="clearFields">Limpiar campos</button>
+      </div>
+    </section>
+
+    <section class="panel" aria-label="Comentarios">
+      <h2>Comentarios para copiar</h2>
+      <div class="box">
+        <div class="box-head"><strong>Accuracy</strong><span class="btns"><button class="ghost" data-copy="A">Copiar</button><button class="ghost" data-clear="A">Borrar</button></span></div>
+        <textarea class="out" id="outA" spellcheck="false"></textarea>
+      </div>
+      <div class="box">
+        <div class="box-head"><strong>Fluency</strong><span class="btns"><button class="ghost" data-copy="F">Copiar</button><button class="ghost" data-clear="F">Borrar</button></span></div>
+        <textarea class="out" id="outF" spellcheck="false"></textarea>
+      </div>
+      <div class="box">
+        <div class="box-head"><strong>Naturalness</strong><span class="btns"><button class="ghost" data-copy="N">Copiar</button><button class="ghost" data-clear="N">Borrar</button></span></div>
+        <textarea class="out" id="outN" spellcheck="false"></textarea>
+      </div>
+      <button class="ghost" id="clearAll">Nuevo caso (borrar todo)</button>
+
+      <h2>Regla del 40%</h2>
+      <div class="calc">
+        <label>Segmentos con error<input id="cErr" type="number" min="0" value="1"></label>
+        <label>Total de segmentos<input id="cTot" type="number" min="1" value="10"></label>
+        <div class="score" id="cOut"></div>
+      </div>
+      <p class="hint">Missing Translation y cualquier Proper Noun van directo a 0 sin contar el 40%. 40% exacto = 1.</p>
+    </section>
+  </div>
+</div>
+</div>
+<div class="toast" id="toast" hidden></div>
+
+<script>
+const T = {
+  A: [
+    {k:"mis", n:"Mistranslation", f:["seg","src","fix","bad"],
+     b:v=>`${v.seg}. Mistranslation - ${v.src?`"${v.src}" `+(v.fix?`should be "${v.fix}"`:"")+(v.bad?`, not "${v.bad}"`:""):`should be "${v.fix}", not "${v.bad}"`}.`},
+    {k:"misA", n:"Mistranslation (audio dice...)", f:["seg","src","fix","bad"],
+     b:v=>`${v.seg}. Mistranslation - audio says "${v.src}", should be "${v.fix}", not "${v.bad}".`},
+    {k:"misL", n:"Mistranslation (letra de canción)", f:["seg","src","fix","bad","link"],
+     b:v=>`${v.seg}. Mistranslation - lyrics say "${v.src}", should be "${v.fix}", not "${v.bad}".`+(v.link?`\nLyrics: ${v.link}`:"")},
+    {k:"miss", n:"Missing Translation", f:["seg","src","fix"],
+     b:v=>`${v.seg}. Missing Translation - "${v.src}" is missing`+(v.fix?`, should be "${v.fix}"`:"")+`.`},
+    {k:"missT", n:"Missing Translation (sin segmento)", f:["time","src"],
+     b:v=>`~${v.time}s Missing Translation - "${v.src}" is not captioned.`},
+    {k:"over", n:"Over translation", f:["seg","bad"],
+     b:v=>`${v.seg}. Over translation - "${v.bad}" is not in the audio.`},
+    {k:"pn", n:"Number/Proper Noun Error", f:["seg","fix","bad"],
+     b:v=>`${v.seg}. Number/Proper Noun Error - should be "${v.fix}", not "${v.bad}".`},
+    {k:"pnB", n:"Proper Noun (marca/producto traducido)", f:["seg","fix","bad"],
+     b:v=>`${v.seg}. Number/Proper Noun Error - brand is "${v.fix}", should not be translated as "${v.bad}".`},
+    {k:"note", n:"Nota", f:["note"], b:v=>`\nNote: ${v.note}`},
+  ],
+  F: [
+    {k:"seg", n:"Segmenting", f:["seg","over40"],
+     b:v=>`${v.seg}. Segmenting - two speakers in one segment${v.over40?` (${v.over40}, more than 40%)`:""}.`},
+    {k:"un", n:"Unnecessary information", f:["seg","sound","bad"],
+     b:v=>`${v.seg}. Unnecessary information - ${v.sound} translated as "${v.bad}".`},
+    {k:"ol", n:"Over-literal translation", f:["seg","fix","bad"],
+     b:v=>`${v.seg}. Over-literal translation - should be "${v.fix}", not "${v.bad}".`},
+    {k:"gr", n:"Grammar", f:["seg","fix","bad"],
+     b:v=>`${v.seg}. Grammar - should be "${v.fix}", not "${v.bad}".`},
+    {k:"ge", n:"Gender", f:["seg","who","fix","bad"],
+     b:v=>`${v.seg}. Gender - ${v.who}, should be "${v.fix}", not "${v.bad}".`},
+    {k:"pu", n:"Punctuation", f:["seg","fix"],
+     b:v=>`${v.seg}. Punctuation - should be "${v.fix}".`},
+    {k:"co", n:"Consistency", f:["seg","fix","bad"],
+     b:v=>`${v.seg}. Consistency - "${v.bad}" here but "${v.fix}" in other segments.`},
+    {k:"note", n:"Nota", f:["note"], b:v=>`\nNote: ${v.note}`},
+  ],
+  N: [
+    {k:"cu", n:"Cultural mistranslation", f:["seg","fix","bad"],
+     b:v=>`${v.seg}. Cultural mistranslation - should be "${v.fix}", not "${v.bad}".`},
+    {k:"fo", n:"Formal expression", f:["seg","fix","bad"],
+     b:v=>`${v.seg}. Formal expression - mixes "usted" and "tú", should be "${v.fix}", not "${v.bad}".`},
+    {k:"em", n:"Emotional bias", f:["seg","fix","bad"],
+     b:v=>`${v.seg}. Emotional bias - should be "${v.fix}", not "${v.bad}".`},
+    {k:"note", n:"Nota", f:["note"], b:v=>`\nNote: ${v.note}`},
+  ],
+  X: [
+    {k:"uc", n:"Unclear segment", f:["seg"], dim:"A", b:v=>`${v.seg}. Unclear segment`},
+    {k:"ov", n:"Overlapping", f:["seg"], dim:"F", b:v=>`${v.seg}. Overlapping`},
+    {k:"fl", n:"Foreign language", f:["seg","lang"], dim:"A", b:v=>`${v.seg}. Foreign language (${v.lang})`},
+    {k:"ly", n:"Lyrics (link)", f:["link"], dim:"A", b:v=>`Lyrics: ${v.link}`},
+
+  ]
+};
+const FIELD = {
+  seg:{l:"Segmento(s)",ph:"3 o 3, 7, 12"},
+  src:{l:"Inglés / audio",ph:'"so bad"'},
+  fix:{l:"Correcto (español)",ph:"muchísimo"},
+  bad:{l:"Traducción actual",ph:"tan mal"},
+  time:{l:"Tiempo aprox. (s)",ph:"42"},
+  link:{l:"Link de la letra",ph:"https://genius.com/..."},
+  over40:{l:"Conteo si pasa del 40%",ph:"7 of 17 segments"},
+  sound:{l:"Sonido",sel:["laughter","a scream","a sob","a kiss sound","noise","applause","humming","a background voice"]},
+  who:{l:"Motivo",sel:["speaker is a woman","speaker is a man","addressed to a woman","speakers are women"]},
+  lang:{l:"Idioma",ph:"Chinese"},
+  note:{l:"Texto de la nota",ph:"seg 4 is unclear, so it is not penalized."},
+
+};
+let dim="A", vals={};
+const $=s=>document.querySelector(s);
+function types(){return T[dim]}
+function cur(){return types().find(t=>t.k===$("#type").value)||types()[0]}
+function fillTypes(){$("#type").innerHTML=types().map(t=>`<option value="${t.k}">${t.n}</option>`).join("");renderFields()}
+function renderFields(){
+  const t=cur();
+  $("#fields").innerHTML=t.f.map(f=>{
+    const d=FIELD[f], v=(vals[f]||"").replace(/"/g,"&quot;");
+    if(d.sel) return `<label>${d.l}<select id="f_${f}" data-f="${f}">${d.sel.map(o=>`<option ${o===vals[f]?"selected":""}>${o}</option>`).join("")}</select></label>`;
+    return `<label>${d.l}<input id="f_${f}" data-f="${f}" value="${v}" placeholder="${d.ph}"></label>`;
+  }).join("") || `<p class="hint">Esta etiqueta no lleva campos.</p>`;
+  $("#fields").querySelectorAll("[data-f]").forEach(el=>{
+    if(el.tagName==="SELECT"&&!vals[el.dataset.f]) vals[el.dataset.f]=el.value;
+    el.addEventListener("input",()=>{vals[el.dataset.f]=el.value;preview()});
+  });
+  preview();
+}
+function line(){const t=cur(),v={};t.f.forEach(f=>v[f]=(vals[f]||"").trim());return t.b(v).replace(/\s+\./g,".")}
+function preview(){$("#preview").textContent=line()}
+function target(){const t=cur();return dim==="X"?t.dim:dim}
+function toast(m){const e=$("#toast");e.textContent=m;e.hidden=false;clearTimeout(e._t);e._t=setTimeout(()=>e.hidden=true,1400)}
+async function copy(text,el){
+  try{await navigator.clipboard.writeText(text);toast("Copiado")}
+  catch(e){if(el){el.focus();el.select()}toast("Selecciona y copia con Ctrl+C")}
+}
+document.querySelectorAll("#dims .tab").forEach(b=>b.onclick=()=>{
+  dim=b.dataset.dim;document.querySelectorAll("#dims .tab").forEach(x=>x.setAttribute("aria-pressed",x===b));fillTypes();
+});
+$("#type").onchange=renderFields;
+$("#add").onclick=()=>{
+  const o=$("#out"+target());o.value=(o.value.trim()?o.value.replace(/\s+$/,"")+"\n":"")+line();
+  toast("Agregado a "+({A:"Accuracy",F:"Fluency",N:"Naturalness"})[target()]);
+};
+$("#copyLine").onclick=()=>copy(line());
+$("#clearFields").onclick=()=>{vals={};renderFields()};
+document.querySelectorAll("[data-copy]").forEach(b=>b.onclick=()=>{const o=$("#out"+b.dataset.copy);copy(o.value,o)});
+document.querySelectorAll("[data-clear]").forEach(b=>b.onclick=()=>{$("#out"+b.dataset.clear).value=""});
+$("#clearAll").onclick=()=>{["A","F","N"].forEach(k=>$("#out"+k).value="");vals={};renderFields();toast("Listo para un caso nuevo")};
+function calc(){
+  const e=+$("#cErr").value||0,t=+$("#cTot").value||1,p=Math.round(e/t*1000)/10;
+  const s=e===0?2:(e/t>0.4?0:1);$("#cOut").textContent=`${e}/${t} = ${p}% → ${s}`;
+}
+$("#cErr").oninput=calc;$("#cTot").oninput=calc;
+document.querySelectorAll("#views .tab").forEach(b=>b.onclick=()=>{
+  document.querySelectorAll("#views .tab").forEach(x=>{x.setAttribute("aria-pressed",x===b);$("#"+x.dataset.view).hidden=x!==b});
+});
+const SCRIPTS=[
+ ["Korean",/[ᄀ-ᇿ㄰-㆏가-힯]/g],
+ ["Japanese",/[぀-ヿ]/g],
+ ["Chinese",/[一-鿿]/g],
+ ["Thai",/[฀-๿]/g],
+ ["Lao",/[຀-໿]/g],
+ ["Khmer",/[ក-៿]/g],
+ ["Burmese",/[က-႟]/g],
+ ["Hindi",/[ऀ-ॿ]/g],
+ ["Bengali",/[ঀ-৿]/g],
+ ["Punjabi",/[਀-੿]/g],
+ ["Gujarati",/[઀-૿]/g],
+ ["Tamil",/[஀-௿]/g],
+ ["Telugu",/[ఀ-౿]/g],
+ ["Kannada",/[ಀ-೿]/g],
+ ["Malayalam",/[ഀ-ൿ]/g],
+ ["Sinhala",/[඀-෿]/g],
+ ["Hebrew",/[֐-׿]/g],
+ ["Arabic",/[؀-ۿݐ-ݿ]/g],
+ ["Cyrillic",/[Ѐ-ӿ]/g],
+ ["Greek",/[Ͱ-Ͽ]/g],
+ ["Georgian",/[Ⴀ-ჿ]/g],
+ ["Armenian",/[԰-֏]/g],
+ ["Amharic",/[ሀ-፿]/g],
+ ["Latin",/[A-Za-zÀ-ɏḀ-ỿ]/g]
+];
+const WORDS={
+ English:"the and you is to of it that this i what are was with for have not my your we just",
+ Spanish:"el la los las que de y en es por para con no una un me mi pero muy está eso yo",
+ Portuguese:"o a os as que de e em é não um uma você eu meu com para isso está muito também",
+ French:"le la les et est je tu il elle nous vous pas que qui une un des du c'est mais",
+ Italian:"il lo la gli le che di e è non sono una un per con questo ma anche ciao",
+ German:"der die das und ist ich du nicht ein eine zu mit auf es sie wir was",
+ Indonesian:"yang dan di ini itu aku kamu tidak ada dengan untuk saya apa ya juga",
+ Turkish:"ve bir bu çok ne ben sen de da için var yok mi gibi",
+ Tagalog:"ang ng sa mga na ako ka ko mo ito hindi siya po naman",
+ Vietnamese:"và là của có không tôi bạn này một được cho",
+ Dutch:"de het een en is ik je niet van dat wat zijn met"
+};
+function cyr(t){if(/[їєґі]/i.test(t))return"Ukrainian";if(/[ў]/i.test(t))return"Belarusian";return"Russian"}
+function arab(t){if(/[ےہٹڈڑں]/.test(t))return"Urdu";if(/[پچژگیک]/.test(t))return"Persian";return"Arabic"}
+function latin(t){
+  const w=t.toLowerCase().match(/[a-zÀ-ɏḀ-ỿ']+/g)||[];
+  if(/[ăơưđạ-ỹ]/i.test(t))return["Vietnamese",1];
+  let best=["English",0];
+  for(const[l,list]of Object.entries(WORDS)){const s=new Set(list.split(" "));const n=w.filter(x=>s.has(x)).length;if(n>best[1])best=[l,n]}
+  if(/[ñ¿¡]/.test(t))best=["Spanish",best[1]+2];
+  if(/[ãõç]/.test(t)&&best[0]!=="Spanish")best=["Portuguese",best[1]+1];
+  return best;
+}
+function detect(t){
+  t=t.trim();if(!t)return null;
+  const counts=SCRIPTS.map(([n,r])=>[n,(t.match(r)||[]).length]).filter(x=>x[1]>0).sort((a,b)=>b[1]-a[1]);
+  if(!counts.length)return{lang:"Unknown",note:"No se reconocen letras (solo símbolos o números)."};
+  const total=counts.reduce((s,x)=>s+x[1],0);
+  let [top]=counts[0];
+  if(top==="Chinese"&&counts.some(c=>c[0]==="Japanese"))top="Japanese";
+  let lang=top,note="";
+  if(top==="Cyrillic")lang=cyr(t);
+  else if(top==="Arabic")lang=arab(t);
+  else if(top==="Latin"){const[l,n]=latin(t);lang=l;if(n<2)note="Pocas palabras para confirmar: verifica con el audio."}
+  const mix=counts.length>1?"También hay: "+counts.slice(1).map(c=>c[0]+" ("+Math.round(c[1]/total*100)+"%)").join(", ")+".":"";
+  return{lang,note:[note,mix].filter(Boolean).join(" ")};
+}
+function runLang(){const r=detect($("#langIn").value);$("#langOut").textContent=r?`${r.lang}${r.note?"\n"+r.note:""}`:"Esperando texto..."}
+vals={seg:"3",src:"so bad",fix:"muchísimo",bad:"tan mal"};
+fillTypes();calc();
+</script>
+
+</body></html>
